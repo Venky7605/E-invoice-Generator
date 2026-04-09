@@ -47,5 +47,36 @@ def get_pending_invoices():
     return {k: v for k, v in get_invoices().items() if v.get("_status") == "PENDING"}
 def get_generated_invoices():
     return {k: v for k, v in get_invoices().items() if v.get("_status") == "IRN_GENERATED"}
+def get_cancelled_invoices():
+    return {k: v for k, v in get_invoices().items() if v.get("_status") == "CANCELLED"}
 def delete_invoice(key):
     invs = get_invoices(); invs.pop(key, None); _save("invoices.json", invs)
+def cancel_invoice(key, cancel_data):
+    invs = get_invoices()
+    if key in invs:
+        invs[key]["_cancel_data"] = cancel_data
+        invs[key]["_status"] = "CANCELLED"
+        invs[key]["_cancelled_at"] = datetime.now().isoformat()
+        _save("invoices.json", invs)
+def clone_invoice(key, new_doc_no, new_date):
+    invs = get_invoices()
+    if key not in invs:
+        return None
+    import copy
+    cloned = copy.deepcopy(invs[key])
+    cloned["DocDtls"]["No"] = new_doc_no
+    cloned["DocDtls"]["Dt"] = new_date
+    cloned.pop("_irn_data", None)
+    cloned.pop("_cancel_data", None)
+    cloned.pop("_cancelled_at", None)
+    cloned["_status"] = "PENDING"
+    cloned["_cloned_from"] = key
+    return save_invoice(cloned)
+def get_templates():
+    return _load("templates.json")
+def save_template(name, inv_data):
+    t = get_templates()
+    t[name] = {"_name": name, "_saved_at": datetime.now().isoformat(), **inv_data}
+    _save("templates.json", t)
+def delete_template(name):
+    t = get_templates(); t.pop(name, None); _save("templates.json", t)

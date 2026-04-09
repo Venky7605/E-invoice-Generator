@@ -31,6 +31,7 @@ with st.sidebar:
     <div style='font-size:.72rem;color:#64748b'>GST e-Invoice · Python Edition</div>
     </div>""", unsafe_allow_html=True)
     st.divider()
+    st.markdown("<div style='font-size:.65rem;font-weight:700;color:#94a3b8;letter-spacing:.08em;padding:.4rem 0 .1rem'>INVOICING</div>", unsafe_allow_html=True)
     page = st.radio("Navigation", [
         "🏠  Dashboard",
         "⚙️  Supplier Profile",
@@ -39,6 +40,12 @@ with st.sidebar:
         "📋  Pending Invoices",
         "🏛️  GPP — Portal Processing",
         "✅  Generated Invoices",
+        "🚫  IRN Cancellation",
+        "─── COMPLIANCE ───",
+        "📊  GSTR-1 Export",
+        "📈  Analytics",
+        "⚡  Bulk Operations",
+        "─── MASTER DATA ───",
         "👥  Recipient Master",
         "📦  HSN Master",
         "🔗  API Settings",
@@ -51,8 +58,14 @@ elif "Supplier Profile"   in page: from pages import supplier;     supplier.show
 elif "Create Invoice"     in page: from pages import create_inv;   create_inv.show()
 elif "Import from Excel"  in page: from pages import excel_page;   excel_page.show()
 elif "Pending Invoices"   in page: from pages import pending;      pending.show()
-elif "GPP"               in page: from pages import gpp;          gpp.show()
+elif "GPP"                in page: from pages import gpp;          gpp.show()
 elif "Generated Invoices" in page: from pages import generated;    generated.show()
+elif "IRN Cancellation"   in page: from pages import irn_cancel;   irn_cancel.show()
+elif "GSTR-1"             in page: from pages import gstr1;        gstr1.show()
+elif "Analytics"          in page: from pages import analytics;    analytics.show()
+elif "Bulk Operations"    in page: from pages import bulk_ops;     bulk_ops.show()
 elif "Recipient Master"   in page: from pages import recipients;   recipients.show()
 elif "HSN Master"         in page: from pages import hsn;          hsn.show()
 elif "API Settings"       in page: from pages import api_settings; api_settings.show()
+elif "───"               in page:
+    st.info("Select a page from the sidebar.")
