@@ -1,0 +1,12 @@
+{
+  "name": "gepp-tool",
+  "version": "2.0.0",
+  "description": "GePP Tool - GST e-Invoice Management",
+  "scripts": {
+    "build": "echo 'Python/Streamlit app - no build step required'",
+    "start": "streamlit run app.py --server.port 8501 --server.address 0.0.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
