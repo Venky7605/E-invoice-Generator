@@ -15,77 +15,74 @@ def show():
         opts = ["-- New Recipient --"] + list(recipients.keys())
         sel  = st.selectbox("Load existing to edit", opts, key="rec_load_sel")
 
-        prev = st.session_state.get("_rec_prev_sel","")
+        prev = st.session_state.get("_rec_prev_sel", "")
         if sel != prev:
             st.session_state["_rec_prev_sel"] = sel
-            st.session_state["_rec_fetched"]  = {}
 
         ex = recipients.get(sel, {}) if sel != "-- New Recipient --" else {}
 
-        # ── GSTIN Lookup ─────────────────────────────────────────
+        # ── GSTIN Auto-fetch ─────────────────────────────────────
         st.markdown("### 🔍 GSTIN Auto-fill from GST Portal")
-        col_g, col_b = st.columns([4, 1])
-        with col_g:
-            lookup_gstin = st.text_input(
-                "Enter GSTIN to fetch details *",
-                value=ex.get("gstin", sel if sel != "-- New Recipient --" else ""),
-                max_chars=15, placeholder="e.g. 33AAACC1226H3Z9",
-                key="rec_lookup_gstin"
-            )
-        with col_b:
-            st.markdown("<br>", unsafe_allow_html=True)
-            fetch_btn = st.button("🔍 Fetch Details", key="rec_fetch_btn", use_container_width=True)
+        st.caption("Details auto-fetch from **services.gst.gov.in** as soon as all 15 characters are entered.")
 
-        fmt = validate_gstin_format(lookup_gstin) if lookup_gstin else {}
+        lookup_gstin = st.text_input(
+            "Enter GSTIN *",
+            value=ex.get("gstin", sel if sel != "-- New Recipient --" else ""),
+            max_chars=15, placeholder="e.g. 33AAACC1226H3Z9",
+            key="rec_lookup_gstin",
+            help="Name & address will be fetched automatically from the GST portal"
+        )
 
-        if fetch_btn and lookup_gstin:
-            if not fmt.get("valid"):
-                st.error(f"❌ {fmt.get('error','Invalid GSTIN')}")
+        gstin_upper    = lookup_gstin.strip().upper()
+        fmt            = validate_gstin_format(gstin_upper) if gstin_upper else {}
+        rec_cache_key  = f"_gst_auto_{gstin_upper}"
+
+        if len(gstin_upper) == 15 and fmt.get("valid"):
+            if st.session_state.get(rec_cache_key) is None:
+                with st.spinner(f"Fetching {gstin_upper} from GST Portal..."):
+                    raw    = fetch_gstin_details(gstin_upper)
+                    parsed = parse_fetched(raw, gstin_upper)
+                st.session_state[rec_cache_key] = parsed
+
+            fetched = st.session_state.get(rec_cache_key, {})
+            if fetched.get("valid") and fetched.get("source") != "local":
+                st.success(
+                    f"✅ **{fetched.get('legal_name','')}**  |  "
+                    f"Status: **{fetched.get('status','')}**  |  "
+                    f"Source: {fetched.get('source','')}"
+                )
+                if fetched.get("addr"):
+                    st.info(
+                        f"📍 **{fetched.get('addr','')}**  "
+                        f"— {fetched.get('location','')} {fetched.get('pincode','')}  "
+                        f"| State: **{fetched.get('state_name','')}**"
+                    )
             else:
-                with st.spinner(f"Fetching {lookup_gstin.upper()} from GST portal..."):
-                    raw    = fetch_gstin_details(lookup_gstin.upper())
-                    parsed = parse_fetched(raw, lookup_gstin.upper())
-                st.session_state["_rec_fetched"] = parsed
+                st.warning(
+                    f"⚠️ Could not fetch live data — "
+                    f"{fetched.get('error', 'GST portal unreachable')}. "
+                    f"Fill address manually or visit "
+                    f"[services.gst.gov.in/services/searchtp](https://services.gst.gov.in/services/searchtp)"
+                )
+        elif gstin_upper and len(gstin_upper) >= 2:
+            st.caption(f"State: **{fmt.get('state_name', '')}** (Code {fmt.get('state_code', '')})")
 
-                if parsed.get("valid") and parsed.get("source") != "local":
-                    st.success(
-                        f"✅ **{parsed.get('legal_name','')}**  |  "
-                        f"Status: {parsed.get('status','')}  |  "
-                        f"Source: {parsed.get('source','')}"
-                    )
-                    if parsed.get("addr"):
-                        st.info(
-                            f"📍 **Principal Place of Business:**  \n"
-                            f"**{parsed.get('addr','')}**  \n"
-                            f"{parsed.get('location','')} — {parsed.get('pincode','')}  \n"
-                            f"State: **{parsed.get('state_name','')}**"
-                        )
-                else:
-                    st.warning(
-                        f"⚠️ GSTIN format valid — **{fmt.get('state_name','')}** (State {fmt.get('state_code','')})  \n"
-                        f"{parsed.get('error','Could not reach GST portal')}  \n"
-                        f"Fill address manually or look up at:  \n"
-                        f"https://services.gst.gov.in/services/searchtp"
-                    )
-        elif lookup_gstin and fmt.get("valid"):
-            st.caption(f"ℹ️ State from GSTIN: **{fmt.get('state_name','')}** (Code: {fmt.get('state_code','')})")
-
-        fetched = st.session_state.get("_rec_fetched", {})
+        fetched = st.session_state.get(rec_cache_key, {}) if len(gstin_upper) == 15 else {}
 
         def _f(key_f, key_ex, default=""):
             if fetched.get("valid") and fetched.get(key_f):
                 return fetched[key_f]
             return ex.get(key_ex, default)
 
-        full_addr     = fetched.get("addr","") if fetched.get("valid") else ""
-        addr1_default = ex.get("addr1") or fetched.get("addr1","")
-        addr2_default = ex.get("addr2") or fetched.get("addr2","")
-        loc_default   = ex.get("location") or fetched.get("location","")
-        pin_default   = ex.get("pincode") or fetched.get("pincode","")
+        full_addr     = fetched.get("addr", "") if fetched.get("valid") else ""
+        addr1_default = _f("addr1", "addr1")
+        addr2_default = _f("addr2", "addr2")
+        loc_default   = _f("location", "location")
+        pin_default   = _f("pincode", "pincode")
 
-        sc_input  = lookup_gstin[:2] if len(lookup_gstin)>=2 else ""
-        sc_saved  = ex.get("state_code","")
-        sc_fetched = fetched.get("state_code","") if fetched.get("valid") else ""
+        sc_input   = gstin_upper[:2] if len(gstin_upper) >= 2 else ""
+        sc_saved   = ex.get("state_code", "")
+        sc_fetched = fetched.get("state_code", "") if fetched.get("valid") else ""
         eff_sc     = sc_fetched or sc_saved or sc_input or "29"
         sn_default = STATES.get(eff_sc, "Karnataka")
 
@@ -137,13 +134,11 @@ def show():
                         "state_code": state_code, "pincode": str(pincode)
                     })
                     st.success(f"✅ Recipient **{gstin.upper()}** saved!")
-                    st.session_state["_rec_fetched"] = {}
                     st.rerun()
 
             if delete and sel != "-- New Recipient --":
                 delete_recipient(sel)
                 st.success(f"Deleted {sel}")
-                st.session_state["_rec_fetched"] = {}
                 st.rerun()
 
     with tab2:

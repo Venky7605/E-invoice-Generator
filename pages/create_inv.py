@@ -4,7 +4,7 @@ from datetime import date
 from utils.db import get_supplier, get_recipients, get_hsn_master, save_invoice
 from utils.masters import STATES, STATE_CODES, DOC_TYPES, SUPPLY_TYPES, UQC_CODES, GST_RATES, determine_tax_type
 from utils.json_builder import build_invoice_json, calculate_item_taxes, calculate_totals
-from utils.nic_api import verify_gstin
+from utils.nic_api import verify_gstin, validate_gstin_format, fetch_gstin_details, parse_fetched
 
 def show():
     st.markdown("<div class='section-header'>📝 Create New e-Invoice</div>", unsafe_allow_html=True)
@@ -49,24 +49,48 @@ def show():
 
     # ── Section 2: Buyer Details ─────────────────────────────────────
     with st.expander("🏢 Buyer / Recipient Details", expanded=True):
-        col_g, col_b = st.columns([4, 1])
-        with col_g:
-            b_gstin = st.text_input("Buyer GSTIN *",
-                                     value=buyer_prefill.get("gstin", ""),
-                                     max_chars=15, key="b_gstin")
-        with col_b:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🔍 Verify GSTIN", key="verify_b", use_container_width=True):
-                if b_gstin:
-                    with st.spinner("Checking GST portal..."):
-                        api_cfg = st.session_state.get("api_config",{})
-                    res = verify_gstin(b_gstin.upper(), api_cfg)
-                    if res["valid"]:
-                        st.session_state["_gstin_verified"] = res
-                        vd = res
-                        st.success(f"✅ {res['legal_name']} — {res['status']}")
-                    else:
-                        st.error(f"❌ {res['error']}")
+        b_gstin = st.text_input(
+            "Buyer GSTIN *",
+            value=buyer_prefill.get("gstin", ""),
+            max_chars=15,
+            placeholder="e.g. 33AAACC1226H3Z9",
+            key="b_gstin",
+            help="Details auto-fetch from services.gst.gov.in once all 15 characters are entered"
+        )
+
+        b_gstin_upper = b_gstin.strip().upper()
+        b_fmt = validate_gstin_format(b_gstin_upper) if b_gstin_upper else {}
+        _gst_cache_key = f"_gst_auto_{b_gstin_upper}"
+
+        if len(b_gstin_upper) == 15 and b_fmt.get("valid"):
+            if st.session_state.get(_gst_cache_key) is None:
+                with st.spinner(f"Fetching {b_gstin_upper} from GST Portal..."):
+                    raw    = fetch_gstin_details(b_gstin_upper)
+                    parsed = parse_fetched(raw, b_gstin_upper)
+                st.session_state[_gst_cache_key] = parsed
+            gst_live = st.session_state.get(_gst_cache_key, {})
+            if gst_live.get("valid") and gst_live.get("source") != "local":
+                st.success(
+                    f"✅ **{gst_live.get('legal_name','')}**  |  "
+                    f"Status: **{gst_live.get('status','')}**  |  "
+                    f"Source: {gst_live.get('source','')}"
+                )
+                if gst_live.get("addr"):
+                    st.caption(
+                        f"📍 {gst_live.get('addr','')}  "
+                        f"— {gst_live.get('location','')} {gst_live.get('pincode','')}  "
+                        f"| {gst_live.get('state_name','')}"
+                    )
+                st.session_state["_gstin_verified"] = gst_live
+                vd = gst_live
+            else:
+                st.warning(
+                    f"Could not fetch live data. "
+                    f"[Look up on GST Portal](https://services.gst.gov.in/services/searchtp)"
+                )
+        elif b_gstin_upper and len(b_gstin_upper) >= 2:
+            sc = b_gstin_upper[:2]
+            st.caption(f"State: **{STATES.get(sc, 'Unknown')}** (code {sc})")
 
         # Auto tax detection
         eff_gstin = b_gstin or buyer_prefill.get("gstin", "")

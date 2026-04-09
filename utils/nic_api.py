@@ -78,19 +78,80 @@ def start_proxy():
         _proxy_started = True
 
 
+def _parse_gst_addr(pradr: dict, sc: str, sn: str) -> dict:
+    """Extract structured address parts from a GST portal pradr object."""
+    addr_obj = pradr.get("addr", {})
+    adr_str  = pradr.get("adr", "")
+
+    if addr_obj:
+        parts = [str(addr_obj.get(k, "")).strip()
+                 for k in ["bnm", "bno", "flno", "st", "loc", "dst", "city"]
+                 if addr_obj.get(k)]
+        full = ", ".join(p for p in parts if p)
+        pin  = str(addr_obj.get("pncd", pradr.get("pncd", ""))).strip()
+        loc  = (addr_obj.get("loc") or addr_obj.get("dst") or
+                addr_obj.get("city") or "").strip()
+    else:
+        full = adr_str
+        pin  = str(pradr.get("pncd", "")).strip()
+        loc  = ""
+        if not pin and "," in full:
+            for part in reversed(full.split(",")):
+                part = part.strip()
+                if part.isdigit() and len(part) == 6:
+                    pin = part
+                    break
+
+    return {"addr": full, "location": loc, "pincode": pin,
+            "state_code": sc, "state_name": sn}
+
+
 def _fetch_gstin_server_side(gstin: str) -> dict:
-    """Server-side GSTIN fetch — tries multiple APIs."""
+    """Server-side GSTIN fetch — GST Portal primary, gstincheck.co.in fallback."""
     sc = gstin[:2]
     sn = STATE_NAMES.get(sc, "Unknown")
 
     browser_hdrs = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://services.gst.gov.in/services/searchtp",
-        "Origin": "https://services.gst.gov.in",
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                       "Chrome/124.0.0.0 Safari/537.36"),
+        "Accept":          "application/json, text/plain, */*",
+        "Accept-Language": "en-IN,en;q=0.9",
+        "Referer":         "https://services.gst.gov.in/services/searchtp",
+        "Origin":          "https://services.gst.gov.in",
+        "Connection":      "keep-alive",
+        "Sec-Fetch-Site":  "same-origin",
+        "Sec-Fetch-Mode":  "cors",
+        "Sec-Fetch-Dest":  "empty",
     }
 
-    # ── Source 1: gstincheck.co.in ──────────────────────────────────
+    # ── Source 1: GST Portal (services.gst.gov.in) ──────────────────
+    gst_urls = [
+        f"https://services.gst.gov.in/services/api/search/taxpayerDetails?gstin={gstin}",
+        f"https://services.gst.gov.in/services/api/search/taxpayerDetails?stj=&gstin={gstin}",
+    ]
+    for url in gst_urls:
+        try:
+            r = requests.get(url, headers=browser_hdrs, timeout=10)
+            if r.status_code == 200 and r.text.strip():
+                d = r.json()
+                if not d.get("errorCode") and d.get("taxpayerInfo"):
+                    tp    = d["taxpayerInfo"]
+                    pradr = tp.get("pradr", {})
+                    aparts = _parse_gst_addr(pradr, sc, sn)
+                    return {
+                        "success":    True,
+                        "source":     "GST Portal (services.gst.gov.in)",
+                        "legal_name": tp.get("lgnm", ""),
+                        "trade_name": tp.get("tradeNam", "") or tp.get("lgnm", ""),
+                        "status":     tp.get("sts", "Active"),
+                        "gstin_type": tp.get("dty", ""),
+                        **aparts,
+                    }
+        except Exception:
+            continue
+
+    # ── Source 2: gstincheck.co.in fallback ─────────────────────────
     for api_key in ["demo", "free", "test"]:
         try:
             r = requests.get(
@@ -102,60 +163,23 @@ def _fetch_gstin_server_side(gstin: str) -> dict:
                 if d.get("flag") is True and d.get("data"):
                     data  = d["data"]
                     pradr = data.get("pradr", {})
-                    addr  = pradr.get("addr", {})
-                    parts = [str(addr.get(k,"")).strip()
-                             for k in ["bnm","bno","flno","st","loc","dst"] if addr.get(k)]
-                    full  = ", ".join(parts)
-                    pin   = str(addr.get("pncd","")).strip()
-                    loc   = addr.get("loc","") or addr.get("dst","")
+                    aparts = _parse_gst_addr(pradr, sc, sn)
                     return {
                         "success":    True,
                         "source":     "gstincheck.co.in",
-                        "legal_name": data.get("lgnm",""),
-                        "trade_name": data.get("tradeNam","") or data.get("lgnm",""),
-                        "status":     data.get("sts","Active"),
-                        "addr":       full,
-                        "location":   loc,
-                        "pincode":    pin,
-                        "state_code": sc,
-                        "state_name": sn,
+                        "legal_name": data.get("lgnm", ""),
+                        "trade_name": data.get("tradeNam", "") or data.get("lgnm", ""),
+                        "status":     data.get("sts", "Active"),
+                        **aparts,
                     }
         except Exception:
             continue
-
-    # ── Source 2: GST Portal direct ─────────────────────────────────
-    try:
-        r = requests.get(
-            f"https://services.gst.gov.in/services/api/search/taxpayerDetails?gstin={gstin}",
-            headers=browser_hdrs, timeout=8
-        )
-        if r.status_code == 200 and r.text.strip():
-            d = r.json()
-            if not d.get("errorCode") and d.get("taxpayerInfo"):
-                tp    = d["taxpayerInfo"]
-                pradr = tp.get("pradr", {})
-                full  = pradr.get("adr","")
-                pin   = str(pradr.get("pncd",""))
-                return {
-                    "success":    True,
-                    "source":     "GST Portal",
-                    "legal_name": tp.get("lgnm",""),
-                    "trade_name": tp.get("tradeNam","") or tp.get("lgnm",""),
-                    "status":     tp.get("sts",""),
-                    "addr":       full,
-                    "location":   "",
-                    "pincode":    pin,
-                    "state_code": sc,
-                    "state_name": sn,
-                }
-    except Exception:
-        pass
 
     return {
         "success":    False,
         "state_code": sc,
         "state_name": sn,
-        "error":      "Could not reach GST portal. Please fill address manually."
+        "error":      "Could not reach GST portal. Please fill address manually.",
     }
 
 
