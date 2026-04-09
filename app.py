@@ -37,6 +37,7 @@ with st.sidebar:
         "📝  Create Invoice",
         "📥  Import from Excel",
         "📋  Pending Invoices",
+        "🏛️  GPP — Portal Processing",
         "✅  Generated Invoices",
         "👥  Recipient Master",
         "📦  HSN Master",
@@ -50,6 +51,7 @@ elif "Supplier Profile"   in page: from pages import supplier;     supplier.show
 elif "Create Invoice"     in page: from pages import create_inv;   create_inv.show()
 elif "Import from Excel"  in page: from pages import excel_page;   excel_page.show()
 elif "Pending Invoices"   in page: from pages import pending;      pending.show()
+elif "GPP"               in page: from pages import gpp;          gpp.show()
 elif "Generated Invoices" in page: from pages import generated;    generated.show()
 elif "Recipient Master"   in page: from pages import recipients;   recipients.show()
 elif "HSN Master"         in page: from pages import hsn;          hsn.show()
