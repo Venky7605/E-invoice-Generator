@@ -4,7 +4,7 @@
   "description": "GePP Tool - GST e-Invoice Management",
   "scripts": {
     "build": "pip3 install -r requirements.txt 2>/dev/null || pip install -r requirements.txt 2>/dev/null || pip3 install --break-system-packages -r requirements.txt 2>/dev/null || pip install --break-system-packages -r requirements.txt 2>/dev/null || pip3 install --user -r requirements.txt 2>/dev/null || pip install --user -r requirements.txt 2>/dev/null || (curl -s https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && python3 /tmp/get-pip.py --user && python3 -m pip install --user -r requirements.txt) || (wget -q https://bootstrap.pypa.io/get-pip.py -O /tmp/get-pip.py && python3 /tmp/get-pip.py --user && python3 -m pip install --user -r requirements.txt) || echo 'Dependencies may be pre-installed in deployment environment'",
-    "start": "python3 -m streamlit run app.py --server.port ${PORT:-8501} --server.address 0.0.0.0 --server.headless true || python -m streamlit run app.py --server.port ${PORT:-8501} --server.address 0.0.0.0 --server.headless true"
+    "start": "streamlit run app.py --server.port ${PORT:-8501} --server.address 0.0.0.0 --server.headless true || python3 -m streamlit run app.py --server.port ${PORT:-8501} --server.address 0.0.0.0 --server.headless true || python -m streamlit run app.py --server.port ${PORT:-8501} --server.address 0.0.0.0 --server.headless true"
   },
   "engines": {
     "node": ">=18.0.0"
